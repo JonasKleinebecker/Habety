@@ -54,8 +54,8 @@ class _HomePageState extends State<HomePage> {
     Colors.purpleAccent,
     Colors.cyan,
   ];
-  final ScrollController _verticalScrollController = ScrollController();
-  final ScrollController _horizontalScrollController = ScrollController();
+  final ScrollController _verticalController = ScrollController();
+  final ScrollController _horizontalController = ScrollController();
 
   List<DateTime> get _dates {
     final now = DateTime.now();
@@ -129,110 +129,75 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      body: Column(
+      body: Row(
         children: [
-          // Header with synchronized scrolling
-          _buildHeader(),
-          // Content
+          // Header
+          _buildHabitColumn(),
+          // Combined Content
           Expanded(
-            child: Row(
-              children: [
-                // Pinned Habit Names
-                SizedBox(
-                  width: 120,
-                  child: ListView.builder(
-                    controller: _verticalScrollController,
-                    itemCount: _habits.length,
-                    itemBuilder: (context, index) {
-                      final habit = _habits[index];
-                      return Container(
-                        height: 40,
-                        color: Colors.grey[800],
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          habit.name,
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                // Scrollable Days Grid
-                Expanded(
-                  child: NotificationListener<ScrollNotification>(
-                    onNotification: (scrollNotification) {
-                      // Synchronize vertical scrolling
-                      if (scrollNotification is ScrollUpdateNotification) {
-                        _verticalScrollController.jumpTo(
-                          _verticalScrollController.offset +
-                              scrollNotification.scrollDelta!,
-                        );
-                      }
-                      return true;
-                    },
-                    child: SingleChildScrollView(
-                      controller: _horizontalScrollController,
-                      scrollDirection: Axis.horizontal,
-                      child: SizedBox(
-                        width: 40.0 * _dates.length,
-                        child: ListView(
-                          controller: _verticalScrollController,
-                          scrollDirection: Axis.vertical,
-                          children: [
-                            Table(
-                              defaultColumnWidth: const FixedColumnWidth(40.0),
-                              children: _habits
-                                  .map((habit) => _buildHabitRow(habit))
-                                  .toList(),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            child: _buildContent(),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      height: 60,
-      color: Colors.grey[850],
-      child: Row(
-        children: [
-          SizedBox(
+  Widget _buildHabitColumn() {
+    return Column(
+      children: [
+        Container(
+          height: 60,
+          color: Colors.grey[850],
+          child: const SizedBox(
             width: 120,
             child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Text(
-                'Habits',
-                style: TextStyle(color: Colors.grey[400]),
-              ),
+              padding: EdgeInsets.all(8.0),
+              child: Text('Habits', style: TextStyle(color: Colors.white)),
             ),
           ),
-          Expanded(
-            child: SingleChildScrollView(
-              controller: _horizontalScrollController,
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: _dates.map((date) => _buildDateHeader(date)).toList(),
-              ),
+        ),
+        Expanded(
+          child: SizedBox(
+            width: 120,
+            child: ListView.builder(
+              controller: _verticalController,
+              itemCount: _habits.length,
+              itemBuilder: (context, index) => _buildHabitName(_habits[index]),
             ),
           ),
-        ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContent() {
+    return SingleChildScrollView(
+      controller: _horizontalController,
+      scrollDirection: Axis.horizontal,
+      child: SizedBox(
+        width: 40.0 * _dates.length,
+        child: ListView(
+          controller: _verticalController,
+          scrollDirection: Axis.vertical,
+          children: [
+            Table(
+              defaultColumnWidth: const FixedColumnWidth(40),
+              children: [
+                TableRow(
+                  children: _dates.map(_buildDateHeader).toList(),
+                ),
+                ..._habits.map(_buildHabitRow),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildDateHeader(DateTime date) {
     return SizedBox(
-      width: 40,
+      height: 60,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -245,6 +210,19 @@ class _HomePageState extends State<HomePage> {
             style: const TextStyle(color: Colors.white),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildHabitName(Habit habit) {
+    return Container(
+      height: 40,
+      color: Colors.grey[800],
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      alignment: Alignment.centerLeft,
+      child: Text(
+        habit.name,
+        style: const TextStyle(color: Colors.white),
       ),
     );
   }
