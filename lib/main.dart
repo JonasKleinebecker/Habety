@@ -118,6 +118,10 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
     Colors.amber,
     Colors.purpleAccent,
     Colors.cyan,
+    Colors.orangeAccent,
+    Colors.tealAccent,
+    Colors.pinkAccent,
+    Colors.lightGreenAccent,
   ];
 
   @override
