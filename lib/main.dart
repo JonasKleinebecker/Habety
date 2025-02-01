@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:horizontal_data_table/horizontal_data_table.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 void main() {
   runApp(const MyApp());
@@ -38,6 +40,21 @@ class Habit {
     required this.color,
     Map<DateTime, int>? completedDates,
   }) : completedDates = completedDates ?? {};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'color': color.value,
+        'completedDates': completedDates
+            .map((key, value) => MapEntry(key.toIso8601String(), value)),
+      };
+
+  factory Habit.fromJson(Map<String, dynamic> json) => Habit(
+        id: json['id'],
+        name: json['name'],
+        color: Color(json['color']),
+        completedDates: (json['completedDates'] as Map<String, dynamic>)
+            .map((key, value) => MapEntry(DateTime.parse(key), value as int)),
+      );
 }
 
 class SimpleTablePage extends StatefulWidget {
@@ -49,6 +66,7 @@ class SimpleTablePage extends StatefulWidget {
 
 class _SimpleTablePageState extends State<SimpleTablePage> {
   final List<Habit> _habits = [];
+  late final SharedPreferences _prefs;
   final List<Color> _availableColors = [
     Colors.redAccent,
     Colors.blueAccent,
@@ -57,6 +75,30 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
     Colors.purpleAccent,
     Colors.cyan,
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHabits();
+  }
+
+  Future<void> _loadHabits() async {
+    _prefs = await SharedPreferences.getInstance();
+    final habitsJson = _prefs.getStringList('habits');
+    if (habitsJson != null) {
+      setState(() {
+        _habits.addAll(habitsJson
+            .map((json) => Habit.fromJson(jsonDecode(json)))
+            .toList());
+      });
+    }
+  }
+
+  Future<void> _saveHabits() async {
+    final habitsJson =
+        _habits.map((habit) => jsonEncode(habit.toJson())).toList();
+    await _prefs.setStringList('habits', habitsJson);
+  }
 
   List<DateTime> get _dates {
     final now = DateTime.now();
@@ -70,6 +112,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
         name: name,
         color: _availableColors[_habits.length % _availableColors.length],
       ));
+      _saveHabits();
     });
   }
 
@@ -79,6 +122,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
       final currentState = habit.completedDates[normalizedDate] ?? 0;
       habit.completedDates[normalizedDate] = (currentState + 1) % 3;
     });
+    _saveHabits();
   }
 
   void _showAddHabitDialog() {
