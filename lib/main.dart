@@ -295,24 +295,130 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
 
   Widget _generateFirstColumnRow(BuildContext context, int index) {
     final habit = _habits[index];
-    return Container(
-      width: 100,
-      height: 40,
-      padding: const EdgeInsets.fromLTRB(5, 0, 5, 0),
-      alignment: Alignment.centerLeft,
-      child: Row(
-        children: [
-          Expanded(child: Text(habit.name)),
-          Container(
-            padding: const EdgeInsets.only(left: 8),
-            child: Text(
-              '${habit.currentStreak}🔥',
-              style: const TextStyle(fontSize: 12),
+    return GestureDetector(
+      onLongPress: () => _showEditHabitDialog(index),
+      child: Container(
+        width: 100,
+        height: 40,
+        padding: const EdgeInsets.fromLTRB(5, 0, 5, 0),
+        alignment: Alignment.centerLeft,
+        child: Row(
+          children: [
+            Expanded(child: Text(habit.name)),
+            Container(
+              padding: const EdgeInsets.only(left: 8),
+              child: Text(
+                '${habit.currentStreak}🔥',
+                style: const TextStyle(fontSize: 12),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
+  }
+
+  void _showEditHabitDialog(int index) {
+    final habit = _habits[index];
+    final textController = TextEditingController(text: habit.name);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.grey[800],
+          title:
+              const Text('Edit Habit', style: TextStyle(color: Colors.white)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: textController,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Habit name',
+                  hintStyle: TextStyle(color: Colors.grey[400]),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(context); // Close the edit dialog
+                      _showDeleteConfirmationDialog(index);
+                    },
+                    child: const Text('Delete',
+                        style: TextStyle(color: Colors.redAccent)),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      if (textController.text.isNotEmpty) {
+                        _renameHabit(index, textController.text);
+                        Navigator.pop(context);
+                      }
+                    },
+                    child: const Text('Save',
+                        style: TextStyle(color: Colors.white)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _renameHabit(int index, String newName) {
+    setState(() {
+      _habits[index] = Habit(
+        id: _habits[index].id,
+        name: newName,
+        color: _habits[index].color,
+        completedDates: _habits[index].completedDates,
+      );
+      _saveHabits();
+    });
+  }
+
+  void _showDeleteConfirmationDialog(int index) {
+    final habit = _habits[index];
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.grey[800],
+          title:
+              const Text('Delete Habit', style: TextStyle(color: Colors.white)),
+          content: Text(
+              'Are you sure you want to delete Habit "${habit.name}"?',
+              style: const TextStyle(color: Colors.white)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancel', style: TextStyle(color: Colors.grey[400])),
+            ),
+            TextButton(
+              onPressed: () {
+                _deleteHabit(index);
+                Navigator.pop(context);
+              },
+              child: const Text('Delete',
+                  style: TextStyle(color: Colors.redAccent)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _deleteHabit(int index) {
+    setState(() {
+      _habits.removeAt(index);
+      _saveHabits();
+    });
   }
 
   Widget _generateRightHandSideColumnRow(BuildContext context, int index) {
