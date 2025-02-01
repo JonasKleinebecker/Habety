@@ -31,11 +31,13 @@ class Habit {
   final String id;
   final String name;
   final Color color;
+  final int maxMissedDays;
   final Map<DateTime, int>
       completedDates; // 0 = empty, 1 = square, 2 = triangle
 
   int get currentStreak {
     int streak = 0;
+    int missedDays = 0;
     DateTime date = DateTime.now();
 
     while (true) {
@@ -43,16 +45,25 @@ class Habit {
           completedDates[DateTime(date.year, date.month, date.day)] ?? 0;
       if (state == 1) {
         streak++;
+        missedDays = 0;
       } else if (state == 0) {
-        break;
+        missedDays++;
+        if (missedDays > maxMissedDays) {
+          break;
+        }
+      } else if (state == 2) {
+        // Triangle day - do not affect streak or missedDays
       }
       date = date.subtract(const Duration(days: 1));
+      // Break if we've checked all relevant days
+      if (date.isBefore(DateTime(2000))) break;
     }
     return streak;
   }
 
   Color getColorForDate(DateTime date) {
     int consecutive = 0;
+    int missedDays = 0;
     DateTime currentDate = date;
 
     while (true) {
@@ -60,20 +71,34 @@ class Habit {
               DateTime(currentDate.year, currentDate.month, currentDate.day)] ??
           0;
       if (state == 1) {
+        // Tracked day
         consecutive++;
+        missedDays = 0;
       } else if (state == 0) {
-        break;
+        // Missed day
+        missedDays++;
+        if (missedDays > maxMissedDays) break;
+      } else if (state == 2) {
+        // Triangle day
+        // Do nothing, maintain current counters
       }
+
       currentDate = currentDate.subtract(const Duration(days: 1));
+      if (currentDate
+          .isBefore(DateTime.now().subtract(const Duration(days: 60)))) break;
     }
 
-    // Calculate intensity (0.1 to 1.0 over 10 days)
-    final intensity = (0.1 + (consecutive / 10.0)).clamp(0.1, 1.0);
-    return color.withOpacity(intensity);
+    // Convert base color to HSL
+    final hsl = HSLColor.fromColor(color);
+
+    // Calculate intensity based on streak length
+    final saturation = (hsl.saturation + (consecutive * 0.07)).clamp(0.5, 1.0);
+    final lightness = (hsl.lightness - (consecutive * 0.03)).clamp(0.1, 0.9);
+
+    return hsl.withSaturation(saturation).withLightness(lightness).toColor();
   }
 
   Color getColorForTriangle(DateTime date) {
-    // Get the color from the previous day
     final previousDate = date.subtract(const Duration(days: 1));
     return getColorForDate(previousDate);
   }
@@ -82,23 +107,53 @@ class Habit {
     required this.id,
     required this.name,
     required this.color,
+    this.maxMissedDays = 0,
     Map<DateTime, int>? completedDates,
   }) : completedDates = completedDates ?? {};
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
         'color': color.value,
-        'completedDates': completedDates
-            .map((key, value) => MapEntry(key.toIso8601String(), value)),
-      };
+        'completedDates': completedDates.map(
+          (key, value) => MapEntry(
+            DateTime.utc(key.year, key.month, key.day).toIso8601String(),
+            value,
+          ),
+        ),
+        'maxMissedDays': maxMissedDays,
+      }..removeWhere((key, value) => value == null);
 
-  factory Habit.fromJson(Map<String, dynamic> json) => Habit(
+  factory Habit.fromJson(Map<String, dynamic> json) {
+    try {
+      return Habit(
         id: json['id'],
         name: json['name'],
         color: Color(json['color']),
-        completedDates: (json['completedDates'] as Map<String, dynamic>)
-            .map((key, value) => MapEntry(DateTime.parse(key), value as int)),
+        completedDates: (json['completedDates'] as Map<String, dynamic>?)?.map(
+              (key, value) => MapEntry(
+                DateTime.utc(
+                  DateTime.parse(key).year,
+                  DateTime.parse(key).month,
+                  DateTime.parse(key).day,
+                ),
+                value as int,
+              ),
+            ) ??
+            {},
+        maxMissedDays: json['maxMissedDays'] ?? 0,
       );
+    } catch (e, stack) {
+      debugPrint('Error creating Habit from JSON: $e');
+      debugPrint(stack.toString());
+      // Return a default habit if parsing fails
+      return Habit(
+        id: DateTime.now().toString(),
+        name: 'New Habit',
+        color: Colors.blueAccent,
+        maxMissedDays: 0,
+      );
+    }
+  }
 }
 
 class SimpleTablePage extends StatefulWidget {
@@ -131,13 +186,40 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
   }
 
   Future<void> _loadHabits() async {
-    _prefs = await SharedPreferences.getInstance();
-    final habitsJson = _prefs.getStringList('habits');
-    if (habitsJson != null) {
+    try {
+      _prefs = await SharedPreferences.getInstance();
+      final habitsJson = _prefs.getStringList('habits');
+      if (habitsJson != null) {
+        setState(() {
+          _habits.addAll(habitsJson.map((json) {
+            try {
+              final decoded = jsonDecode(json);
+              if (decoded is! Map<String, dynamic>) {
+                throw FormatException(
+                    'Expected Map, got ${decoded.runtimeType}');
+              }
+              return Habit.fromJson(decoded);
+            } catch (e, stack) {
+              debugPrint('Error parsing habit: $e');
+              debugPrint(stack.toString());
+              // Return a default habit if parsing fails
+              return Habit(
+                id: DateTime.now().toString(),
+                name: 'New Habit',
+                color: Colors.blueAccent,
+                maxMissedDays: 0,
+              );
+            }
+          }).toList());
+        });
+      }
+    } catch (e, stack) {
+      debugPrint('Error loading habits: $e');
+      debugPrint(stack.toString());
+      // Clear corrupted preferences
+      await _prefs.remove('habits');
       setState(() {
-        _habits.addAll(habitsJson
-            .map((json) => Habit.fromJson(jsonDecode(json)))
-            .toList());
+        _habits.clear();
       });
     }
   }
@@ -153,12 +235,13 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
     return List.generate(7, (index) => now.subtract(Duration(days: 6 - index)));
   }
 
-  void _addHabit(String name) {
+  void _addHabit(String name, [int maxMissedDays = 0]) {
     setState(() {
       _habits.add(Habit(
         id: DateTime.now().toString(),
         name: name,
         color: _availableColors[_habits.length % _availableColors.length],
+        maxMissedDays: maxMissedDays,
       ));
       _saveHabits();
     });
@@ -178,17 +261,33 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
       context: context,
       builder: (context) {
         final textController = TextEditingController();
+        final missedDaysController = TextEditingController(text: '0');
         return AlertDialog(
           backgroundColor: Colors.grey[800],
           title: const Text('Add New Habit',
               style: TextStyle(color: Colors.white)),
-          content: TextField(
-            controller: textController,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              hintText: 'Habit name',
-              hintStyle: TextStyle(color: Colors.grey[400]),
-            ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: textController,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Habit name',
+                  hintStyle: TextStyle(color: Colors.grey[400]),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: missedDaysController,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Max missed days (0 for strict)',
+                  hintStyle: TextStyle(color: Colors.grey[400]),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+            ],
           ),
           actions: [
             TextButton(
@@ -198,7 +297,10 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
             TextButton(
               onPressed: () {
                 if (textController.text.isNotEmpty) {
-                  _addHabit(textController.text);
+                  _addHabit(
+                    textController.text,
+                    int.tryParse(missedDaysController.text) ?? 0,
+                  );
                   Navigator.pop(context);
                 }
               },
@@ -332,13 +434,42 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                controller: textController,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Habit name',
-                  hintStyle: TextStyle(color: Colors.grey[400]),
-                ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: textController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Habit name',
+                      hintStyle: TextStyle(color: Colors.grey[400]),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: TextEditingController(
+                        text: _habits[index].maxMissedDays.toString()),
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Max missed days',
+                      hintStyle: TextStyle(color: Colors.grey[400]),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (value) {
+                      final maxMissed = int.tryParse(value) ?? 0;
+                      setState(() {
+                        _habits[index] = Habit(
+                          id: _habits[index].id,
+                          name: _habits[index].name,
+                          color: _habits[index].color,
+                          maxMissedDays: maxMissed,
+                          completedDates: _habits[index].completedDates,
+                        );
+                      });
+                      _saveHabits();
+                    },
+                  ),
+                ],
               ),
               const SizedBox(height: 20),
               Row(
@@ -377,6 +508,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
         id: _habits[index].id,
         name: newName,
         color: _habits[index].color,
+        maxMissedDays: _habits[index].maxMissedDays,
         completedDates: _habits[index].completedDates,
       );
       _saveHabits();
@@ -446,16 +578,84 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
 Widget _getShapeWidget(
     {required int state, required Habit habit, required DateTime date}) {
   return Container(
-    color: Colors.grey[900], // Row background color
-    child: switch (state) {
-      1 => Container(color: habit.getColorForDate(date)),
-      2 => ClipPath(
-          clipper: TriangleClipper(),
-          child: Container(color: habit.getColorForTriangle(date)),
-        ),
-      _ => null,
-    },
+    color: Colors.grey[900],
+    child: Stack(
+      children: [
+        if (state == 1) Container(color: habit.getColorForDate(date)),
+        if (state == 2)
+          ClipPath(
+            clipper: TriangleClipper(),
+            child: Container(color: habit.getColorForTriangle(date)),
+          ),
+        if (state == 0) _getMissedDayWidget(habit: habit, date: date),
+      ],
+    ),
   );
+}
+
+Widget _getMissedDayWidget({required Habit habit, required DateTime date}) {
+  if (habit.maxMissedDays == 0) {
+    return Container();
+  }
+
+  try {
+    int totalMissed = 0;
+    DateTime currentDate = date;
+    int safetyCounter = 0;
+
+    while (safetyCounter < 365) {
+      final state = habit.completedDates[
+              DateTime(currentDate.year, currentDate.month, currentDate.day)] ??
+          0;
+      if (state == 0) {
+        totalMissed++;
+      } else if (state == 1) {
+        break; // Stop at the last tracked day
+      }
+      // For triangle (state 2), continue to previous day
+      currentDate = currentDate.subtract(const Duration(days: 1));
+      safetyCounter++;
+    }
+
+    if (totalMissed > habit.maxMissedDays) {
+      return Container();
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          right: BorderSide(
+            color: habit.color.withOpacity(0.3),
+            width: 2.0,
+          ),
+        ),
+      ),
+    );
+  } catch (e, stack) {
+    debugPrint('Error in _getMissedDayWidget: $e');
+    debugPrint(stack.toString());
+    return Container();
+  }
+}
+
+class MissedDayClipper extends CustomClipper<Path> {
+  final double rightWidth;
+
+  MissedDayClipper({required this.rightWidth});
+
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    path.moveTo(0, 0);
+    path.lineTo(0, size.height);
+    path.lineTo(rightWidth, size.height);
+    path.lineTo(size.width, 0);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) => true;
 }
 
 class TriangleClipper extends CustomClipper<Path> {
