@@ -34,6 +34,50 @@ class Habit {
   final Map<DateTime, int>
       completedDates; // 0 = empty, 1 = square, 2 = triangle
 
+  int get currentStreak {
+    int streak = 0;
+    DateTime date = DateTime.now();
+
+    while (true) {
+      final state =
+          completedDates[DateTime(date.year, date.month, date.day)] ?? 0;
+      if (state == 1) {
+        streak++;
+      } else if (state == 0) {
+        break;
+      }
+      date = date.subtract(const Duration(days: 1));
+    }
+    return streak;
+  }
+
+  Color getColorForDate(DateTime date) {
+    int consecutive = 0;
+    DateTime currentDate = date;
+
+    while (true) {
+      final state = completedDates[
+              DateTime(currentDate.year, currentDate.month, currentDate.day)] ??
+          0;
+      if (state == 1) {
+        consecutive++;
+      } else if (state == 0) {
+        break;
+      }
+      currentDate = currentDate.subtract(const Duration(days: 1));
+    }
+
+    // Calculate intensity (0.1 to 1.0 over 10 days)
+    final intensity = (0.1 + (consecutive / 10.0)).clamp(0.1, 1.0);
+    return color.withOpacity(intensity);
+  }
+
+  Color getColorForTriangle(DateTime date) {
+    // Get the color from the previous day
+    final previousDate = date.subtract(const Duration(days: 1));
+    return getColorForDate(previousDate);
+  }
+
   Habit({
     required this.id,
     required this.name,
@@ -246,12 +290,24 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
   }
 
   Widget _generateFirstColumnRow(BuildContext context, int index) {
+    final habit = _habits[index];
     return Container(
       width: 100,
       height: 40,
-      padding: const EdgeInsets.fromLTRB(5, 0, 0, 0),
+      padding: const EdgeInsets.fromLTRB(5, 0, 5, 0),
       alignment: Alignment.centerLeft,
-      child: Text(_habits[index].name),
+      child: Row(
+        children: [
+          Expanded(child: Text(habit.name)),
+          Container(
+            padding: const EdgeInsets.only(left: 8),
+            child: Text(
+              '${habit.currentStreak}🔥',
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -268,7 +324,8 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
                 state: _habits[index].completedDates[
                         DateTime(date.year, date.month, date.day)] ??
                     0,
-                color: _habits[index].color,
+                habit: _habits[index],
+                date: date,
               ),
             ));
       }).toList(),
@@ -276,14 +333,15 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
   }
 }
 
-Widget _getShapeWidget({required int state, required Color color}) {
+Widget _getShapeWidget(
+    {required int state, required Habit habit, required DateTime date}) {
   return Container(
     color: Colors.grey[900], // Row background color
     child: switch (state) {
-      1 => Container(color: color),
+      1 => Container(color: habit.getColorForDate(date)),
       2 => ClipPath(
           clipper: TriangleClipper(),
-          child: Container(color: color),
+          child: Container(color: habit.getColorForTriangle(date)),
         ),
       _ => null,
     },
