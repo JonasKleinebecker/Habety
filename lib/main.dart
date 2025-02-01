@@ -71,21 +71,17 @@ class Habit {
               DateTime(currentDate.year, currentDate.month, currentDate.day)] ??
           0;
       if (state == 1) {
-        // Tracked day
         consecutive++;
         missedDays = 0;
       } else if (state == 0) {
-        // Missed day
         missedDays++;
         if (missedDays > maxMissedDays) break;
       } else if (state == 2) {
-        // Triangle day
-        // Do nothing, maintain current counters
+        // Triangle day - do not affect streak or missedDays
       }
-
       currentDate = currentDate.subtract(const Duration(days: 1));
-      if (currentDate
-          .isBefore(DateTime.now().subtract(const Duration(days: 60)))) break;
+      // CORRECTED: Look back 60 days from the target date, not from now
+      if (currentDate.isBefore(date.subtract(const Duration(days: 60)))) break;
     }
 
     // Convert base color to HSL
@@ -113,7 +109,7 @@ class Habit {
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
-        'color': color.value,
+        'color': color,
         'completedDates': completedDates.map(
           (key, value) => MapEntry(
             DateTime.utc(key.year, key.month, key.day).toIso8601String(),
@@ -232,7 +228,8 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
 
   List<DateTime> get _dates {
     final now = DateTime.now();
-    return List.generate(7, (index) => now.subtract(Duration(days: 6 - index)));
+    return List.generate(
+        14, (index) => now.subtract(Duration(days: 13 - index)));
   }
 
   void _addHabit(String name, [int maxMissedDays = 0]) {
@@ -326,7 +323,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
       ),
       body: HorizontalDataTable(
         leftHandSideColumnWidth: 100,
-        rightHandSideColumnWidth: 280,
+        rightHandSideColumnWidth: 560,
         isFixedHeader: true,
         headerWidgets: _getTitleWidget(),
         isFixedFooter: false,
@@ -593,69 +590,118 @@ Widget _getShapeWidget(
   );
 }
 
-Widget _getMissedDayWidget({required Habit habit, required DateTime date}) {
-  if (habit.maxMissedDays == 0) {
-    return Container();
+class MissedDayPainter extends CustomPainter {
+  final Color color;
+  final int consecutiveMissed; // 1 for first missed day, 2 for second, etc.
+  final int maxMissedDays;
+
+  MissedDayPainter({
+    required this.color,
+    required this.consecutiveMissed,
+    required this.maxMissedDays,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double H = size.height;
+    final double W = size.width;
+
+    // Calculate effective heights based on the missed-day index.
+    final double H_left =
+        ((maxMissedDays - consecutiveMissed + 1) / maxMissedDays) * H;
+    final double H_right =
+        ((maxMissedDays - consecutiveMissed) / maxMissedDays) * H;
+
+    // Center each edge vertically within the cell.
+    final double topLeft = (H - H_left) / 2;
+    final double bottomLeft = topLeft + H_left;
+    final double topRight = (H - H_right) / 2;
+    final double bottomRight = topRight + H_right;
+
+    // Construct the trapezoidal path.
+    final path = Path()
+      ..moveTo(0, topLeft) // left edge, top
+      ..lineTo(W, topRight) // right edge, top
+      ..lineTo(W, bottomRight) // right edge, bottom
+      ..lineTo(0, bottomLeft) // left edge, bottom
+      ..close();
+
+    // Draw the solid tapered shape.
+    final fillPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(path, fillPaint);
+
+    // Now draw vertical stripes with Colors.grey[900].
+    const int numberOfStripes = 4;
+    final double stripeThickness = (0.5 * W) / numberOfStripes;
+
+    // Clip the canvas to the trapezoidal shape.
+    canvas.save();
+    canvas.clipPath(path);
+
+    final stripePaint = Paint()
+      ..color = Colors.grey[900]!
+      ..style = PaintingStyle.fill;
+
+    // Draw the stripes evenly spaced across the cell.
+    for (int i = 0; i < numberOfStripes; i++) {
+      final double stripeX = (i + 0.5) * (W / numberOfStripes);
+      final Rect stripeRect = Rect.fromCenter(
+        center: Offset(stripeX, H / 2),
+        width: stripeThickness,
+        height: H,
+      );
+      canvas.drawRect(stripeRect, stripePaint);
+    }
+    canvas.restore();
   }
 
-  try {
-    int totalMissed = 0;
-    DateTime currentDate = date;
-    int safetyCounter = 0;
-
-    while (safetyCounter < 365) {
-      final state = habit.completedDates[
-              DateTime(currentDate.year, currentDate.month, currentDate.day)] ??
-          0;
-      if (state == 0) {
-        totalMissed++;
-      } else if (state == 1) {
-        break; // Stop at the last tracked day
-      }
-      // For triangle (state 2), continue to previous day
-      currentDate = currentDate.subtract(const Duration(days: 1));
-      safetyCounter++;
-    }
-
-    if (totalMissed > habit.maxMissedDays) {
-      return Container();
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(
-          right: BorderSide(
-            color: habit.color.withOpacity(0.3),
-            width: 2.0,
-          ),
-        ),
-      ),
-    );
-  } catch (e, stack) {
-    debugPrint('Error in _getMissedDayWidget: $e');
-    debugPrint(stack.toString());
-    return Container();
-  }
+  @override
+  bool shouldRepaint(covariant MissedDayPainter oldDelegate) =>
+      oldDelegate.consecutiveMissed != consecutiveMissed ||
+      oldDelegate.maxMissedDays != maxMissedDays ||
+      oldDelegate.color != color;
 }
 
-class MissedDayClipper extends CustomClipper<Path> {
-  final double rightWidth;
+Widget _getMissedDayWidget({required Habit habit, required DateTime date}) {
+  // We assume this widget is only called for cells that are missed (state == 0).
+  final normalizedDate = DateTime(date.year, date.month, date.day);
+  final state = habit.completedDates[normalizedDate] ?? 0;
+  if (state != 0) return Container(); // only for missed days
 
-  MissedDayClipper({required this.rightWidth});
-
-  @override
-  Path getClip(Size size) {
-    final path = Path();
-    path.moveTo(0, 0);
-    path.lineTo(0, size.height);
-    path.lineTo(rightWidth, size.height);
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
+  // Count consecutive missed days by scanning backward from the cell date.
+  int consecutiveMissed = 0;
+  DateTime current = date;
+  while (true) {
+    final norm = DateTime(current.year, current.month, current.day);
+    final s = habit.completedDates[norm] ?? 0;
+    if (s == 0) {
+      consecutiveMissed++;
+      // Break early if we already exceed the max allowed.
+      if (consecutiveMissed > habit.maxMissedDays) break;
+      current = current.subtract(const Duration(days: 1));
+    } else {
+      break;
+    }
   }
 
-  @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => true;
+  // If the consecutive missed count exceeds maxMissedDays, the cell is empty.
+  if (consecutiveMissed > habit.maxMissedDays) {
+    return Container();
+  }
+
+  final lastTrackedDate = date.subtract(Duration(days: consecutiveMissed));
+  final color = habit.getColorForDate(lastTrackedDate);
+
+  return CustomPaint(
+    size: const Size(40, 40),
+    painter: MissedDayPainter(
+      color: color, // Now uses the correct historical streak color
+      consecutiveMissed: consecutiveMissed,
+      maxMissedDays: habit.maxMissedDays,
+    ),
+  );
 }
 
 class TriangleClipper extends CustomClipper<Path> {
