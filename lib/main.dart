@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:horizontal_data_table/horizontal_data_table.dart';
 
 void main() {
   runApp(const MyApp());
@@ -10,7 +11,8 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Habit Tracker',
+      title: 'Habety',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: Colors.grey[900],
         appBarTheme: AppBarTheme(
@@ -18,7 +20,7 @@ class MyApp extends StatelessWidget {
           foregroundColor: Colors.white,
         ),
       ),
-      home: const HomePage(),
+      home: SimpleTablePage(),
     );
   }
 }
@@ -27,24 +29,25 @@ class Habit {
   final String id;
   final String name;
   final Color color;
-  final Map<DateTime, bool> completedDates;
+  final Map<DateTime, int>
+      completedDates; // 0 = empty, 1 = square, 2 = triangle
 
   Habit({
     required this.id,
     required this.name,
     required this.color,
-    Map<DateTime, bool>? completedDates,
+    Map<DateTime, int>? completedDates,
   }) : completedDates = completedDates ?? {};
 }
 
-class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+class SimpleTablePage extends StatefulWidget {
+  const SimpleTablePage({super.key});
 
   @override
-  _HomePageState createState() => _HomePageState();
+  State<SimpleTablePage> createState() => _SimpleTablePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _SimpleTablePageState extends State<SimpleTablePage> {
   final List<Habit> _habits = [];
   final List<Color> _availableColors = [
     Colors.redAccent,
@@ -54,8 +57,6 @@ class _HomePageState extends State<HomePage> {
     Colors.purpleAccent,
     Colors.cyan,
   ];
-  final ScrollController _verticalController = ScrollController();
-  final ScrollController _horizontalController = ScrollController();
 
   List<DateTime> get _dates {
     final now = DateTime.now();
@@ -75,8 +76,8 @@ class _HomePageState extends State<HomePage> {
   void _toggleDate(Habit habit, DateTime date) {
     setState(() {
       final normalizedDate = DateTime(date.year, date.month, date.day);
-      habit.completedDates[normalizedDate] =
-          !(habit.completedDates[normalizedDate] ?? false);
+      final currentState = habit.completedDates[normalizedDate] ?? 0;
+      habit.completedDates[normalizedDate] = (currentState + 1) % 3;
     });
   }
 
@@ -129,75 +130,46 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      body: Row(
-        children: [
-          // Header
-          _buildHabitColumn(),
-          // Combined Content
-          Expanded(
-            child: _buildContent(),
-          ),
-        ],
+      body: HorizontalDataTable(
+        leftHandSideColumnWidth: 100,
+        rightHandSideColumnWidth: 280,
+        isFixedHeader: true,
+        headerWidgets: _getTitleWidget(),
+        isFixedFooter: false,
+        leftSideItemBuilder: _generateFirstColumnRow,
+        rightSideItemBuilder: _generateRightHandSideColumnRow,
+        itemCount: _habits.length,
+        leftHandSideColBackgroundColor: Colors.grey[850]!,
+        rightHandSideColBackgroundColor: Colors.grey[800]!,
+        itemExtent: 40,
       ),
     );
   }
 
-  Widget _buildHabitColumn() {
-    return Column(
-      children: [
-        Container(
-          height: 60,
-          color: Colors.grey[850],
-          child: const SizedBox(
-            width: 120,
-            child: Padding(
-              padding: EdgeInsets.all(8.0),
-              child: Text('Habits', style: TextStyle(color: Colors.white)),
-            ),
-          ),
-        ),
-        Expanded(
-          child: SizedBox(
-            width: 120,
-            child: ListView.builder(
-              controller: _verticalController,
-              itemCount: _habits.length,
-              itemBuilder: (context, index) => _buildHabitName(_habits[index]),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildContent() {
-    return SingleChildScrollView(
-      controller: _horizontalController,
-      scrollDirection: Axis.horizontal,
-      child: SizedBox(
-        width: 40.0 * _dates.length,
-        child: ListView(
-          controller: _verticalController,
-          scrollDirection: Axis.vertical,
-          children: [
-            Table(
-              defaultColumnWidth: const FixedColumnWidth(40),
-              children: [
-                TableRow(
-                  children: _dates.map(_buildDateHeader).toList(),
-                ),
-                ..._habits.map(_buildHabitRow),
-              ],
-            ),
-          ],
-        ),
+  List<Widget> _getTitleWidget() {
+    return [
+      Container(
+        width: 100,
+        height: 60,
+        padding: const EdgeInsets.fromLTRB(5, 0, 0, 0),
+        alignment: Alignment.centerLeft,
+        child:
+            Text('Habit', style: const TextStyle(fontWeight: FontWeight.bold)),
       ),
-    );
+      ..._dates.map((date) {
+        return _getDateItemWidget(date);
+      }),
+    ];
   }
 
-  Widget _buildDateHeader(DateTime date) {
+  Widget _getDateItemWidget(DateTime date) {
+    final now = DateTime.now();
+    final isToday =
+        date.year == now.year && date.month == now.month && date.day == now.day;
+
     return SizedBox(
       height: 60,
+      width: 40,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -205,65 +177,107 @@ class _HomePageState extends State<HomePage> {
             _getDayAbbreviation(date.weekday),
             style: TextStyle(color: Colors.grey[400]),
           ),
-          Text(
-            date.day.toString(),
-            style: const TextStyle(color: Colors.white),
+          Container(
+            width: 24,
+            height: 24,
+            decoration: isToday
+                ? BoxDecoration(
+                    color: Colors.grey[700],
+                    shape: BoxShape.circle,
+                  )
+                : null,
+            child: Center(
+              child: Text(
+                date.day.toString(),
+                style: TextStyle(
+                  color: isToday ? Colors.white : Colors.white,
+                  fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildHabitName(Habit habit) {
+  Widget _generateFirstColumnRow(BuildContext context, int index) {
     return Container(
+      width: 100,
       height: 40,
-      color: Colors.grey[800],
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.fromLTRB(5, 0, 0, 0),
       alignment: Alignment.centerLeft,
-      child: Text(
-        habit.name,
-        style: const TextStyle(color: Colors.white),
-      ),
+      child: Text(_habits[index].name),
     );
   }
 
-  TableRow _buildHabitRow(Habit habit) {
-    return TableRow(
+  Widget _generateRightHandSideColumnRow(BuildContext context, int index) {
+    return Row(
       children: _dates.map((date) {
         return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => _toggleDate(habit, date),
-          child: Container(
-            height: 40,
-            color: habit.completedDates[
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _toggleDate(_habits[index], date),
+            child: Container(
+              width: 40,
+              height: 40,
+              child: _getShapeWidget(
+                state: _habits[index].completedDates[
                         DateTime(date.year, date.month, date.day)] ??
-                    false
-                ? habit.color
-                : Colors.grey[900],
-          ),
-        );
+                    0,
+                color: _habits[index].color,
+              ),
+            ));
       }).toList(),
     );
   }
+}
 
-  String _getDayAbbreviation(int weekday) {
-    switch (weekday) {
-      case 1:
-        return 'Mon';
-      case 2:
-        return 'Tue';
-      case 3:
-        return 'Wed';
-      case 4:
-        return 'Thu';
-      case 5:
-        return 'Fri';
-      case 6:
-        return 'Sat';
-      case 7:
-        return 'Sun';
-      default:
-        return '';
-    }
+Widget _getShapeWidget({required int state, required Color color}) {
+  return Container(
+    color: Colors.grey[900], // Row background color
+    child: switch (state) {
+      1 => Container(color: color),
+      2 => ClipPath(
+          clipper: TriangleClipper(),
+          child: Container(color: color),
+        ),
+      _ => null,
+    },
+  );
+}
+
+class TriangleClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    path.moveTo(0, 0); // Upper left corner
+    path.lineTo(0, size.height); // Lower left corner
+    path.lineTo(size.width, size.height); // Lower right corner
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
+}
+
+String _getDayAbbreviation(int weekday) {
+  switch (weekday) {
+    case 1:
+      return 'Mon';
+    case 2:
+      return 'Tue';
+    case 3:
+      return 'Wed';
+    case 4:
+      return 'Thu';
+    case 5:
+      return 'Fri';
+    case 6:
+      return 'Sat';
+    case 7:
+      return 'Sun';
+    default:
+      return '';
   }
 }
