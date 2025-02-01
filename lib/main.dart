@@ -681,6 +681,9 @@ Widget _getMissedDayWidget({required Habit habit, required DateTime date}) {
       // Break early if we already exceed the max allowed.
       if (consecutiveMissed > habit.maxMissedDays) break;
       current = current.subtract(const Duration(days: 1));
+    } else if (s == 2) {
+      // Triangle day - don't count as missed but continue checking previous days
+      current = current.subtract(const Duration(days: 1));
     } else {
       break;
     }
@@ -697,7 +700,7 @@ Widget _getMissedDayWidget({required Habit habit, required DateTime date}) {
   return CustomPaint(
     size: const Size(40, 40),
     painter: MissedDayPainter(
-      color: color, // Now uses the correct historical streak color
+      color: color,
       consecutiveMissed: consecutiveMissed,
       maxMissedDays: habit.maxMissedDays,
     ),
