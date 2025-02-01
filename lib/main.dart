@@ -109,10 +109,10 @@ class Habit {
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
-        'color': color,
+        'color': color.value, // Store color as int value
         'completedDates': completedDates.map(
           (key, value) => MapEntry(
-            DateTime.utc(key.year, key.month, key.day).toIso8601String(),
+            DateTime(key.year, key.month, key.day).toIso8601String(),
             value,
           ),
         ),
@@ -124,10 +124,10 @@ class Habit {
       return Habit(
         id: json['id'],
         name: json['name'],
-        color: Color(json['color']),
+        color: Color(json['color'] as int),
         completedDates: (json['completedDates'] as Map<String, dynamic>?)?.map(
               (key, value) => MapEntry(
-                DateTime.utc(
+                DateTime(
                   DateTime.parse(key).year,
                   DateTime.parse(key).month,
                   DateTime.parse(key).day,
