@@ -38,11 +38,12 @@ class Habit {
   int get currentStreak {
     int streak = 0;
     int missedDays = 0;
-    DateTime date = DateTime.now();
 
-    while (true) {
-      final state =
-          completedDates[DateTime(date.year, date.month, date.day)] ?? 0;
+    List sortedDates = completedDates.keys.toList()
+      ..sort((a, b) => b.compareTo(a));
+
+    for (DateTime date in sortedDates) {
+      final state = completedDates[date] ?? 0;
       if (state == 1) {
         streak++;
         missedDays = 0;
@@ -54,9 +55,6 @@ class Habit {
       } else if (state == 2) {
         // Triangle day - do not affect streak or missedDays
       }
-      date = date.subtract(const Duration(days: 1));
-      // Break if we've checked all relevant days
-      if (date.isBefore(DateTime(2000))) break;
     }
     return streak;
   }
