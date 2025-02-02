@@ -34,13 +34,45 @@ class Habit {
   final int maxMissedDays;
   final Map<DateTime, int>
       completedDates; // 0 = empty, 1 = square, 2 = triangle
+  final Map<DateTime, (int, int)> streakCache =
+      {}; //date to (streak, missedDays)
 
-  int get currentStreak {
+  int getStreakAtDate(DateTime streakDate) {
+    DateTime normalizedStreakDate =
+        DateTime(streakDate.year, streakDate.month, streakDate.day);
+    DateTime previousDay = streakDate.subtract(const Duration(days: 1));
+    if (streakCache.containsKey(previousDay)) {
+      final state = completedDates[normalizedStreakDate] ?? 0;
+      var (previousStreak, previousMissedDays) = streakCache[previousDay]!;
+      if (state == 1) {
+        streakCache[normalizedStreakDate] = (previousStreak + 1, 0);
+        return previousStreak++;
+      } else if (state == 0) {
+        int missedDays = previousMissedDays + 1;
+        if (missedDays > maxMissedDays) {
+          streakCache[normalizedStreakDate] = (0, 0);
+          return 0;
+        }
+        streakCache[normalizedStreakDate] = (previousStreak, missedDays);
+        return previousStreak;
+      } else if (state == 2) {
+        streakCache[normalizedStreakDate] =
+            (previousStreak, previousMissedDays);
+        return previousStreak;
+      }
+    }
+
     int streak = 0;
     int missedDays = 0;
 
     List sortedDates = completedDates.keys.toList()
       ..sort((a, b) => b.compareTo(a));
+
+    sortedDates = sortedDates
+        .where((date) => !date.isAfter(
+              DateTime(streakDate.year, streakDate.month, streakDate.day),
+            ))
+        .toList();
 
     for (DateTime date in sortedDates) {
       final state = completedDates[date] ?? 0;
@@ -50,44 +82,26 @@ class Habit {
       } else if (state == 0) {
         missedDays++;
         if (missedDays > maxMissedDays) {
+          streakCache[date] = (0, 0);
           break;
         }
       } else if (state == 2) {
         // Triangle day - do not affect streak or missedDays
       }
+      streakCache[date] = (streak, missedDays);
     }
     return streak;
   }
 
   Color getColorForDate(DateTime date) {
-    int consecutive = 0;
-    int missedDays = 0;
-    DateTime currentDate = date;
-
-    while (true) {
-      final state = completedDates[
-              DateTime(currentDate.year, currentDate.month, currentDate.day)] ??
-          0;
-      if (state == 1) {
-        consecutive++;
-        missedDays = 0;
-      } else if (state == 0) {
-        missedDays++;
-        if (missedDays > maxMissedDays) break;
-      } else if (state == 2) {
-        // Triangle day - do not affect streak or missedDays
-      }
-      currentDate = currentDate.subtract(const Duration(days: 1));
-      // CORRECTED: Look back 60 days from the target date, not from now
-      if (currentDate.isBefore(date.subtract(const Duration(days: 60)))) break;
-    }
+    int streakLength = getStreakAtDate(date);
 
     // Convert base color to HSL
     final hsl = HSLColor.fromColor(color);
 
     // Calculate intensity based on streak length
-    final saturation = (hsl.saturation + (consecutive * 0.07)).clamp(0.5, 1.0);
-    final lightness = (hsl.lightness - (consecutive * 0.03)).clamp(0.1, 0.9);
+    final saturation = (hsl.saturation + (streakLength * 0.07)).clamp(0.5, 1.0);
+    final lightness = (hsl.lightness - (streakLength * 0.03)).clamp(0.1, 0.9);
 
     return hsl.withSaturation(saturation).withLightness(lightness).toColor();
   }
@@ -243,6 +257,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
   }
 
   void _toggleDate(Habit habit, DateTime date) {
+    habit.streakCache.removeWhere((key, _) => key.isAfter(date));
     setState(() {
       final normalizedDate = DateTime(date.year, date.month, date.day);
       final currentState = habit.completedDates[normalizedDate] ?? 0;
@@ -405,7 +420,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
             Container(
               padding: const EdgeInsets.only(left: 8),
               child: Text(
-                '${habit.currentStreak}🔥',
+                '${habit.getStreakAtDate(DateTime.now())}🔥',
                 style: const TextStyle(fontSize: 12),
               ),
             ),
