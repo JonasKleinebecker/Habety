@@ -32,69 +32,45 @@ class Habit {
   final String name;
   final Color color;
   final int maxMissedDays;
-  final Map<DateTime, int>
-      completedDates; // 0 = empty, 1 = square, 2 = triangle
-  final Map<DateTime, (int, int)> streakCache =
-      {}; //date to (streak, missedDays)
+  final Map<DateTime, int> completedDates; // 0 = empty, 1 = square, 2 = triangle
+  final Map<DateTime, int> streakCache = {};
 
-  int getStreakAtDate(DateTime streakDate) {
-    DateTime normalizedStreakDate =
-        DateTime(streakDate.year, streakDate.month, streakDate.day);
-    DateTime previousDay = streakDate.subtract(const Duration(days: 1));
-    if (streakCache.containsKey(previousDay)) {
-      final state = completedDates[normalizedStreakDate] ?? 0;
-      var (previousStreak, previousMissedDays) = streakCache[previousDay]!;
-      if (state == 1) {
-        streakCache[normalizedStreakDate] = (previousStreak + 1, 0);
-        return previousStreak++;
-      } else if (state == 0) {
-        int missedDays = previousMissedDays + 1;
-        if (missedDays > maxMissedDays) {
-          streakCache[normalizedStreakDate] = (0, 0);
-          return 0;
-        }
-        streakCache[normalizedStreakDate] = (previousStreak, missedDays);
-        return previousStreak;
-      } else if (state == 2) {
-        streakCache[normalizedStreakDate] =
-            (previousStreak, previousMissedDays);
-        return previousStreak;
-      }
+  int getStreakAtDateRec(date, {missedDays = 0}) {
+    DateTime normDate = DateTime(date.year, date.month, date.day);
+    if (streakCache.containsKey(normDate)) {
+      debugPrint('Streak cache hit for $normDate');
+      return streakCache[normDate]!;
     }
 
-    int streak = 0;
-    int missedDays = 0;
-
-    List sortedDates = completedDates.keys.toList()
-      ..sort((a, b) => b.compareTo(a));
-
-    sortedDates = sortedDates
-        .where((date) => !date.isAfter(
-              DateTime(streakDate.year, streakDate.month, streakDate.day),
-            ))
-        .toList();
-
-    for (DateTime date in sortedDates) {
-      final state = completedDates[date] ?? 0;
-      if (state == 1) {
-        streak++;
-        missedDays = 0;
-      } else if (state == 0) {
+    bool normDateIsToday = normDate.year == DateTime.now().year &&
+        normDate.month == DateTime.now().month &&
+        normDate.day == DateTime.now().day;
+    final state = completedDates[normDate] ?? 0;
+    if (state == 1) {
+      int streak = getStreakAtDateRec(date.subtract(const Duration(days: 1))) + 1;
+      streakCache[normDate] = streak;
+      return streak;
+    } else if (state == 0) {
+      if (!normDateIsToday) {
         missedDays++;
-        if (missedDays > maxMissedDays) {
-          streakCache[date] = (0, 0);
-          break;
-        }
-      } else if (state == 2) {
-        // Triangle day - do not affect streak or missedDays
       }
-      streakCache[date] = (streak, missedDays);
+      if (missedDays > maxMissedDays) {
+        streakCache[normDate] = 0;
+        return 0;
+      }
+      int streak = getStreakAtDateRec(date.subtract(const Duration(days: 1)), missedDays: missedDays);
+      streakCache[normDate] = streak;
+      return streak;
+    } else if (state == 2) {
+      int streak = getStreakAtDateRec(date.subtract(const Duration(days: 1)), missedDays: missedDays);
+      streakCache[normDate] = streak;
+      return streak;
     }
-    return streak;
+    return 0; // should never happen
   }
 
   Color getColorForDate(DateTime date) {
-    int streakLength = getStreakAtDate(date);
+    int streakLength = getStreakAtDateRec(date);
 
     // Convert base color to HSL
     final hsl = HSLColor.fromColor(color);
@@ -203,8 +179,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
             try {
               final decoded = jsonDecode(json);
               if (decoded is! Map<String, dynamic>) {
-                throw FormatException(
-                    'Expected Map, got ${decoded.runtimeType}');
+                throw FormatException('Expected Map, got ${decoded.runtimeType}');
               }
               return Habit.fromJson(decoded);
             } catch (e, stack) {
@@ -233,15 +208,13 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
   }
 
   Future<void> _saveHabits() async {
-    final habitsJson =
-        _habits.map((habit) => jsonEncode(habit.toJson())).toList();
+    final habitsJson = _habits.map((habit) => jsonEncode(habit.toJson())).toList();
     await _prefs.setStringList('habits', habitsJson);
   }
 
   List<DateTime> get _dates {
     final now = DateTime.now();
-    return List.generate(
-        14, (index) => now.subtract(Duration(days: 13 - index)));
+    return List.generate(14, (index) => now.subtract(Duration(days: 13 - index)));
   }
 
   void _addHabit(String name, [int maxMissedDays = 0]) {
@@ -274,8 +247,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
         final missedDaysController = TextEditingController(text: '0');
         return AlertDialog(
           backgroundColor: Colors.grey[800],
-          title: const Text('Add New Habit',
-              style: TextStyle(color: Colors.white)),
+          title: const Text('Add New Habit', style: TextStyle(color: Colors.white)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -357,8 +329,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
         height: 60,
         padding: const EdgeInsets.fromLTRB(5, 0, 0, 0),
         alignment: Alignment.centerLeft,
-        child:
-            Text('Habit', style: const TextStyle(fontWeight: FontWeight.bold)),
+        child: Text('Habit', style: const TextStyle(fontWeight: FontWeight.bold)),
       ),
       ..._dates.map((date) {
         return _getDateItemWidget(date);
@@ -368,8 +339,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
 
   Widget _getDateItemWidget(DateTime date) {
     final now = DateTime.now();
-    final isToday =
-        date.year == now.year && date.month == now.month && date.day == now.day;
+    final isToday = date.year == now.year && date.month == now.month && date.day == now.day;
 
     return SizedBox(
       height: 60,
@@ -420,7 +390,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
             Container(
               padding: const EdgeInsets.only(left: 8),
               child: Text(
-                '${habit.getStreakAtDate(DateTime.now())}🔥',
+                '${habit.getStreakAtDateRec(DateTime.now())}🔥',
                 style: const TextStyle(fontSize: 12),
               ),
             ),
@@ -439,8 +409,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: Colors.grey[800],
-          title:
-              const Text('Edit Habit', style: TextStyle(color: Colors.white)),
+          title: const Text('Edit Habit', style: TextStyle(color: Colors.white)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -457,8 +426,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
                   ),
                   const SizedBox(height: 10),
                   TextField(
-                    controller: TextEditingController(
-                        text: _habits[index].maxMissedDays.toString()),
+                    controller: TextEditingController(text: _habits[index].maxMissedDays.toString()),
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: 'Max missed days',
@@ -490,8 +458,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
                       Navigator.pop(context); // Close the edit dialog
                       _showDeleteConfirmationDialog(index);
                     },
-                    child: const Text('Delete',
-                        style: TextStyle(color: Colors.redAccent)),
+                    child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
                   ),
                   TextButton(
                     onPressed: () {
@@ -500,8 +467,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
                         Navigator.pop(context);
                       }
                     },
-                    child: const Text('Save',
-                        style: TextStyle(color: Colors.white)),
+                    child: const Text('Save', style: TextStyle(color: Colors.white)),
                   ),
                 ],
               ),
@@ -532,10 +498,8 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: Colors.grey[800],
-          title:
-              const Text('Delete Habit', style: TextStyle(color: Colors.white)),
-          content: Text(
-              'Are you sure you want to delete Habit "${habit.name}"?',
+          title: const Text('Delete Habit', style: TextStyle(color: Colors.white)),
+          content: Text('Are you sure you want to delete Habit "${habit.name}"?',
               style: const TextStyle(color: Colors.white)),
           actions: [
             TextButton(
@@ -547,8 +511,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
                 _deleteHabit(index);
                 Navigator.pop(context);
               },
-              child: const Text('Delete',
-                  style: TextStyle(color: Colors.redAccent)),
+              child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
             ),
           ],
         );
@@ -573,9 +536,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
               width: 40,
               height: 40,
               child: _getShapeWidget(
-                state: _habits[index].completedDates[
-                        DateTime(date.year, date.month, date.day)] ??
-                    0,
+                state: _habits[index].completedDates[DateTime(date.year, date.month, date.day)] ?? 0,
                 habit: _habits[index],
                 date: date,
               ),
@@ -585,8 +546,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
   }
 }
 
-Widget _getShapeWidget(
-    {required int state, required Habit habit, required DateTime date}) {
+Widget _getShapeWidget({required int state, required Habit habit, required DateTime date}) {
   return Container(
     color: Colors.grey[900],
     child: Stack(
@@ -620,10 +580,8 @@ class MissedDayPainter extends CustomPainter {
     final double W = size.width;
 
     // Calculate effective heights based on the missed-day index.
-    final double H_left =
-        ((maxMissedDays - consecutiveMissed + 1) / maxMissedDays) * H;
-    final double H_right =
-        ((maxMissedDays - consecutiveMissed) / maxMissedDays) * H;
+    final double H_left = ((maxMissedDays - consecutiveMissed + 1) / maxMissedDays) * H;
+    final double H_right = ((maxMissedDays - consecutiveMissed) / maxMissedDays) * H;
 
     // Center each edge vertically within the cell.
     final double topLeft = (H - H_left) / 2;
