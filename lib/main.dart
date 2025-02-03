@@ -35,10 +35,9 @@ class Habit {
   final Map<DateTime, int> completedDates; // 0 = empty, 1 = square, 2 = triangle
   final Map<DateTime, int> streakCache = {};
 
-  int getStreakAtDateRec(date, {missedDays = 0}) {
+  int getStreakAtDate(date, {missedDays = 0}) {
     DateTime normDate = DateTime(date.year, date.month, date.day);
     if (streakCache.containsKey(normDate)) {
-      debugPrint('Streak cache hit for $normDate');
       return streakCache[normDate]!;
     }
 
@@ -47,7 +46,7 @@ class Habit {
         normDate.day == DateTime.now().day;
     final state = completedDates[normDate] ?? 0;
     if (state == 1) {
-      int streak = getStreakAtDateRec(date.subtract(const Duration(days: 1))) + 1;
+      int streak = getStreakAtDate(date.subtract(const Duration(days: 1))) + 1;
       streakCache[normDate] = streak;
       return streak;
     } else if (state == 0) {
@@ -58,11 +57,11 @@ class Habit {
         streakCache[normDate] = 0;
         return 0;
       }
-      int streak = getStreakAtDateRec(date.subtract(const Duration(days: 1)), missedDays: missedDays);
+      int streak = getStreakAtDate(date.subtract(const Duration(days: 1)), missedDays: missedDays);
       streakCache[normDate] = streak;
       return streak;
     } else if (state == 2) {
-      int streak = getStreakAtDateRec(date.subtract(const Duration(days: 1)), missedDays: missedDays);
+      int streak = getStreakAtDate(date.subtract(const Duration(days: 1)), missedDays: missedDays);
       streakCache[normDate] = streak;
       return streak;
     }
@@ -70,14 +69,12 @@ class Habit {
   }
 
   Color getColorForDate(DateTime date) {
-    int streakLength = getStreakAtDateRec(date);
+    int streakLength = getStreakAtDate(date);
 
-    // Convert base color to HSL
     final hsl = HSLColor.fromColor(color);
 
-    // Calculate intensity based on streak length
-    final saturation = (hsl.saturation + (streakLength * 0.07)).clamp(0.5, 1.0);
-    final lightness = (hsl.lightness - (streakLength * 0.03)).clamp(0.1, 0.9);
+    final saturation = (hsl.saturation + (streakLength * 0.07)).clamp(0.4, 1.0);
+    final lightness = (hsl.lightness - (streakLength * 0.03)).clamp(0.1, 1.0);
 
     return hsl.withSaturation(saturation).withLightness(lightness).toColor();
   }
@@ -149,6 +146,7 @@ class SimpleTablePage extends StatefulWidget {
 
 class _SimpleTablePageState extends State<SimpleTablePage> {
   final List<Habit> _habits = [];
+  late ScrollController _hScrollController;
   late final SharedPreferences _prefs;
   final List<Color> _availableColors = [
     Colors.redAccent,
@@ -230,7 +228,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
   }
 
   void _toggleDate(Habit habit, DateTime date) {
-    habit.streakCache.removeWhere((key, _) => key.isAfter(date));
+    habit.streakCache.clear();
     setState(() {
       final normalizedDate = DateTime(date.year, date.month, date.day);
       final currentState = habit.completedDates[normalizedDate] ?? 0;
@@ -318,6 +316,16 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
         leftHandSideColBackgroundColor: Colors.grey[850]!,
         rightHandSideColBackgroundColor: Colors.grey[800]!,
         itemExtent: 40,
+        onScrollControllerReady: (verticalController, horizontalController) {
+          _hScrollController = horizontalController;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_hScrollController.hasClients) {
+              _hScrollController.jumpTo(
+                _hScrollController.position.maxScrollExtent,
+              );
+            }
+          });
+        },
       ),
     );
   }
@@ -390,7 +398,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
             Container(
               padding: const EdgeInsets.only(left: 8),
               child: Text(
-                '${habit.getStreakAtDateRec(DateTime.now())}🔥',
+                '${habit.getStreakAtDate(DateTime.now())}🔥',
                 style: const TextStyle(fontSize: 12),
               ),
             ),
