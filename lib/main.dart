@@ -84,6 +84,27 @@ class Habit {
     return getColorForDate(previousDate);
   }
 
+  bool trackedDayIsWithinDaysFrom(DateTime date, int days) {
+    final state = completedDates[date] ?? 0;
+    if (state == 1) return true;
+    if (state == 2) {
+      final previousDate = date.subtract(const Duration(days: 1));
+      return trackedDayIsWithinDaysFrom(previousDate, days);
+    } else {
+      //state == 0
+      if (days == 0) return false;
+      final previousDate = date.subtract(const Duration(days: 1));
+      return trackedDayIsWithinDaysFrom(previousDate, days - 1);
+    }
+  }
+
+  bool doesDateBreakStreak(DateTime date) {
+    DateTime normDate = DateTime(date.year, date.month, date.day);
+    final state = completedDates[normDate] ?? 0;
+    if (state != 0) return false;
+    return trackedDayIsWithinDaysFrom(normDate, maxMissedDays);
+  }
+
   Habit({
     required this.id,
     required this.name,
@@ -383,6 +404,12 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
     );
   }
 
+  String _generateStreakText(Habit habit) {
+    final streak = habit.getStreakAtDate(DateTime.now());
+    final streakEmoji = habit.doesDateBreakStreak(DateTime.now()) ? '🔥' : (streak == 0 ? '❄️' : '⌛');
+    return '$streak $streakEmoji';
+  }
+
   Widget _generateFirstColumnRow(BuildContext context, int index) {
     final habit = _habits[index];
     return GestureDetector(
@@ -398,7 +425,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
             Container(
               padding: const EdgeInsets.only(left: 8),
               child: Text(
-                '${habit.getStreakAtDate(DateTime.now())}🔥',
+                _generateStreakText(habit),
                 style: const TextStyle(fontSize: 12),
               ),
             ),
