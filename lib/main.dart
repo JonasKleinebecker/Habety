@@ -102,7 +102,7 @@ class Habit {
     DateTime normDate = DateTime(date.year, date.month, date.day);
     final state = completedDates[normDate] ?? 0;
     if (state != 0) return false;
-    return trackedDayIsWithinDaysFrom(normDate, maxMissedDays);
+    return !trackedDayIsWithinDaysFrom(normDate, maxMissedDays);
   }
 
   Habit({
@@ -406,7 +406,7 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
 
   String _generateStreakText(Habit habit) {
     final streak = habit.getStreakAtDate(DateTime.now());
-    final streakEmoji = habit.doesDateBreakStreak(DateTime.now()) ? '🔥' : (streak == 0 ? '❄️' : '⌛');
+    final streakEmoji = habit.doesDateBreakStreak(DateTime.now()) ? (streak == 0 ? '❄️' : '⌛') : '🔥';
     return '$streak $streakEmoji';
   }
 
