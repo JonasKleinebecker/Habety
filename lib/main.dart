@@ -228,10 +228,11 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
   }
 
   Future<void> _saveHabits() async {
-    final habitsJson = _habits.map((habit) => jsonEncode(habit.toJson())).toList();
-    await _prefs.setStringList('habits', habitsJson);
+    final habitsJsonList = _habits.map((habit) => jsonEncode(habit.toJson())).toList();
+    await _prefs.setStringList('habits', habitsJsonList);
+    final habitsJson = jsonEncode(habitsJsonList);
     await HomeWidget.saveWidgetData('habits', habitsJson);
-    // await HomeWidget.updateWidget(name: 'ObservableWidget');
+    await HomeWidget.updateWidget(name: 'ObservableWidget');
   }
 
   List<DateTime> get _dates {
