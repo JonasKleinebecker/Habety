@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:home_widget/home_widget.dart';
 import 'package:horizontal_data_table/horizontal_data_table.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
@@ -229,6 +230,8 @@ class _SimpleTablePageState extends State<SimpleTablePage> {
   Future<void> _saveHabits() async {
     final habitsJson = _habits.map((habit) => jsonEncode(habit.toJson())).toList();
     await _prefs.setStringList('habits', habitsJson);
+    await HomeWidget.saveWidgetData('habits', habitsJson);
+    // await HomeWidget.updateWidget(name: 'ObservableWidget');
   }
 
   List<DateTime> get _dates {
